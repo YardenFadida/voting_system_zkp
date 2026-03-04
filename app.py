@@ -5,7 +5,7 @@ import streamlit as st
 from zkp_circuit import VotingCircuit
 
 # ----------------------------
-# Part A: Voter ballot UI
+# Voter ballot UI
 # ----------------------------
 def ballot_ui():
     st.header("Secure Voting Portal")
@@ -97,8 +97,7 @@ def ballot_ui():
 
 
 # ----------------------------
-# Part B: Developer / demo panel
-# (proof generation only; verify removed)
+# Developer / demo panel
 # ----------------------------
 def developer_panel():
     st.header("Developer Panel (for demo / debugging)")
@@ -137,7 +136,7 @@ def developer_panel():
 st.set_page_config(page_title="ZK Voting Demo", layout="centered")
 st.title("ZK Vote Demo")
 
-# Developer first (default), voter second
+
 mode = st.sidebar.radio("View", ["Developer Panel", "Voter Ballot"], index=0)
 
 if mode == "Developer Panel":
