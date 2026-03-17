@@ -63,9 +63,7 @@ class VotingServer:
         
         # Step 2: Verify ZKP proof
         voter_token_hash = hashlib.sha256(voter_token.encode()).hexdigest()
-        proof_valid, verification_msg = self.circuit.verify_vote_proof(
-            proof_data, public_inputs, voter_token_hash
-        )
+        proof_valid, verification_msg = self.circuit.verify_vote_proof(proof_data)  # original call passed 3 args (proof_data, public_inputs, voter_token_hash) but verify_vote_proof in zkp_circuit.py only accepts proof_data
         
         if not proof_valid:
             print(f"[SERVER] Proof verification failed: {verification_msg}")
