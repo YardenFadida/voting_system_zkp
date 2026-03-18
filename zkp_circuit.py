@@ -5,6 +5,9 @@ try:
     from zksnake.groth16 import Groth16, Proof
     from zksnake.arithmetization import ConstraintSystem, R1CS, Var
     from zksnake.constant import BN254_SCALAR_FIELD
+    from zksnake.ecc import ec_bn254
+    PointG1 = ec_bn254.PointG1
+    PointG2 = ec_bn254.PointG2
 except ImportError as e:
     print(f"[DEBUG] Error during imports {e}")
 
@@ -14,6 +17,9 @@ class VotingCircuit:
     
     _proof_system = None
     _r1cs = None
+
+    def __init__(self):
+        VotingCircuit._setup_circuit()
     
     @staticmethod
     def _setup_circuit():
@@ -49,37 +55,47 @@ class VotingCircuit:
     def _serialize_point(point):
         """Serialize points into a proper JSON format"""
         try:
-            if isinstance(point, (tuple, list)):
-                if len(point) == 2:
-                    if isinstance(point[0], (tuple, list)):
-                        return [[str(p) for p in subpoint] for subpoint in point]
-                    else:
-                        return [str(point[0]), str(point[1])]
+            if hasattr(point, 'x') and hasattr(point, 'y'):
+                x, y = point.x, point.y
+                if isinstance(x, (tuple, list)):
+                    # G2 point: x and y are [x0, x1] and [y0, y1]
+                    return [[int(p) for p in x], [int(p) for p in y]]
                 else:
-                    return [str(p) for p in point]
-            elif hasattr(point, 'x') and hasattr(point, 'y'):
-                return [str(point.x), str(point.y)]
+                    # G1 point: x and y are plain integers
+                    return [int(x), int(y)]
+            elif isinstance(point, (tuple, list)):
+                if len(point) == 2 and isinstance(point[0], (tuple, list)):
+                    return [[int(p) for p in subpoint] for subpoint in point]
+                else:
+                    return [int(p) for p in point]
             else:
-                return str(point)
-
+                return int(point)
         except Exception as e:
             print(f"[DEBUG] Error during serialization: {e}")
+            raise
 
     @staticmethod
-    def _deserialize_point(data):
-        """Deserialize points"""
+    def _deserialize_point(data, is_g2=False):
+        """Deserialize points into zksnake point objects"""
+        
         if isinstance(data, list):
             if len(data) == 2:
-                if isinstance(data[0], list):
-                    # G2 point (point B): nested list [[x0,x1],[y0,y1]]
-                    return tuple(tuple(int(p) for p in subpoint) for subpoint in data)
+                if isinstance(data[0], list) or is_g2:
+                    # G2 point (point B)
+                    return PointG2(
+                            int(data[0][0]),  # x0
+                            int(data[0][1]),  # x1
+                            int(data[1][0]),  # y0
+                            int(data[1][1])   # y1
+                            )
                 else:
                     # G1 point (points A and C): [x, y]
-                    return (int(data[0]), int(data[1]))
+                    return PointG1(int(data[0]), int(data[1]))
             else:
                 return tuple(int(p) for p in data)
         else:
             return int(data)
+
     
     @staticmethod
     def generate_vote_proof(voter_token, candidate_id, voter_token_hash):
@@ -93,8 +109,6 @@ class VotingCircuit:
             raise ValueError("Invalid candidate ID")
         
         try:
-            VotingCircuit._setup_circuit()
-            
             # Generate proof
             # Plug in voter choice
             solution = VotingCircuit._r1cs.solve({'candidate': candidate_id})
@@ -131,13 +145,12 @@ class VotingCircuit:
             if 'proof' not in proof_dict or 'public_inputs' not in proof_dict:
                 return False, "Invalid proof structure"
             
-            VotingCircuit._setup_circuit()
             # Reconstruct proof object from A, B, C
             A = VotingCircuit._deserialize_point(proof_dict['proof']['A'])
-            B = VotingCircuit._deserialize_point(proof_dict['proof']['B'])
+            B = VotingCircuit._deserialize_point(proof_dict['proof']['B'], is_g2=True)
             C = VotingCircuit._deserialize_point(proof_dict['proof']['C'])
             proof = Proof(A, B, C)
-            public_inputs = proof_dict['public_inputs']
+            public_inputs = [int(p) for p in proof_dict['public_inputs']]
 
             is_valid = VotingCircuit._proof_system.verify(proof, public_inputs)
 
@@ -147,5 +160,4 @@ class VotingCircuit:
                 return False, "Proof verification failed"
         
         except Exception as e:
-            print(f"[ZKSNAKE] Verification error: {e}")
             return False, f"Verification error: {str(e)}"

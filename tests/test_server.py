@@ -89,7 +89,7 @@ def test_tally_votes_returns_results(server):
         (2, "Candidate B", 3),
         (3, "Candidate C", 2),
     ]
-    results = server.tally_votes_and_display()
+    results = server.tally_votes()
     assert len(results) == 3
 
 
@@ -99,14 +99,7 @@ def test_tally_votes_handles_zero_votes(server):
         (2, "Candidate B", 0),
     ]
     # Should not raise ZeroDivisionError
-    results = server.tally_votes_and_display()
+    results = server.tally_votes()
     assert results is not None
 
 
-# --- get_results ---
-
-def test_get_results_delegates_to_db(server):
-    server.db.get_election_results.return_value = {"A": 10, "B": 5}
-    results = server.get_results()
-    server.db.get_election_results.assert_called_once()
-    assert results == {"A": 10, "B": 5}

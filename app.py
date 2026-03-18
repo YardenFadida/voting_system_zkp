@@ -5,20 +5,14 @@ import streamlit as st
 from client import VotingClient
 from server import VotingServer
 
-
 DB_NAME = "zkp_voting_system.db"
 
 @st.cache_resource
-def get_server():
+def setup_server():
     return VotingServer()
 
-@st.cache_resource
-def get_client():
-    return VotingClient(server=get_server())
-
-server = get_server()
-client = get_client()
-
+# Initialize server
+server = setup_server()
 
 # ----------------------------
 # Helpers
@@ -34,9 +28,9 @@ def fetch_df(query, params=None):
 
 def safe_refresh_tally():
     try:
-        server.db.tally_votes()
-    except Exception:
-        pass
+        server.tally_votes()   
+    except Exception as e:
+        print(f"[APP] Error during Tally: {str(e)}")
 
 
 def init_session_state():
@@ -45,10 +39,9 @@ def init_session_state():
         "voter_token": "",
         "last_candidate_id": None,
         "last_candidate_name": "",
-        "last_proof": "",
         "server_message": "",
         "admin_last_token": "",
-        "admin_last_message": "",
+        "vote_submitted": False
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -72,8 +65,8 @@ def reset_voter_flow():
         "voter_token",
         "last_candidate_id",
         "last_candidate_name",
-        "last_proof",
         "server_message",
+        "vote_submitted"
     ]:
         if key in st.session_state:
             del st.session_state[key]
@@ -86,18 +79,17 @@ def reset_voter_flow():
 def admin_side():
     st.header("Admin Side")
 
-    col1, col2 = st.columns(2)
+    col1, col2= st.columns(2)
 
     with col1:
         st.subheader("Election Setup")
         if st.button("Load / Initialize Election", use_container_width=True):
             try:
+                print("[APP] Initialize election")
                 server.setup_election()
                 safe_refresh_tally()
-                st.session_state.admin_last_message = "Election initialized."
                 st.success("Election initialized.")
             except Exception as e:
-                st.session_state.admin_last_message = str(e)
                 st.error(str(e))
 
     with col2:
@@ -126,17 +118,9 @@ def admin_side():
 
     st.divider()
 
-    col3, col4 = st.columns([1, 1])
-    with col3:
-        if st.button("Refresh Database View", use_container_width=True):
-            safe_refresh_tally()
-            st.rerun()
-    with col4:
-        if st.button("Refresh Results Only", use_container_width=True):
-            safe_refresh_tally()
-            st.rerun()
-
-    safe_refresh_tally()
+    if st.button("Refresh", use_container_width=True):
+        safe_refresh_tally()
+        st.rerun()
 
     st.subheader("Election Results")
     results_df = fetch_df("""
@@ -157,7 +141,7 @@ def admin_side():
 
     st.subheader("Eligible Voters Table")
     voters_df = fetch_df("""
-        SELECT voter_id, voter_hash, voter_token, registration_date, has_voted, is_active
+        SELECT voter_id, voter_hash, voter_token_hash, registration_date, has_voted, is_active
         FROM eligible_voters
         ORDER BY voter_id
     """)
@@ -165,20 +149,11 @@ def admin_side():
 
     st.subheader("Votes Table")
     votes_df = fetch_df("""
-        SELECT vote_id, voter_token_hash, public_inputs, vote_timestamp, is_verified
+        SELECT vote_id, voter_token_hash, candidate, vote_timestamp, is_verified
         FROM votes
         ORDER BY vote_id
     """)
     st.dataframe(votes_df, use_container_width=True, hide_index=True)
-
-    st.subheader("Vote Tally Table")
-    tally_df = fetch_df("""
-        SELECT vt.candidate_id, c.candidate_name, vt.vote_count
-        FROM vote_tally vt
-        JOIN candidates c ON c.candidate_id = vt.candidate_id
-        ORDER BY vt.candidate_id
-    """)
-    st.dataframe(tally_df, use_container_width=True, hide_index=True)
 
     st.subheader("Quick Status Checks")
 
@@ -191,12 +166,6 @@ def admin_side():
         c1.metric("Registered Voters", total_voters)
         c2.metric("Already Voted", voted_count)
         c3.metric("Active Voters", active_count)
-
-    if not votes_df.empty and not voters_df.empty:
-        st.caption(
-            "If a voter has has_voted = 1 and only one row appears for that token hash in votes, "
-            "the double-voting protection is working."
-        )
 
 
 # ----------------------------
@@ -262,31 +231,33 @@ def voter_ballot():
                 st.rerun()
 
         with col2:
-            if st.button("Confirm Vote", use_container_width=True):
-                success, message, vote_package = client.submit_vote(
+            if st.button(
+                "Confirm Vote",
+                use_container_width=True,
+                disabled=st.session_state.vote_submitted  # ← simple flag
+            ):
+                st.session_state.vote_submitted = True     # ← set immediately
+                success, message = VotingClient.submit_vote(
+                    circuit=server.circuit,
+                    server=server,
                     voter_token=st.session_state.voter_token,
                     candidate_id=st.session_state.last_candidate_id,
                 )
-
                 st.session_state.server_message = message
-                st.session_state.last_proof = (
-                    vote_package["proof_data"] if vote_package else ""
-                )
-
                 if success:
                     safe_refresh_tally()
                     st.session_state.step = 4
                     st.rerun()
                 else:
-                    st.error(message)
+                    st.session_state.step = 5
+                    st.rerun()  # ← rerun so button renders as disabled immediately
 
     else:
-        st.success(st.session_state.server_message or "Vote submitted successfully.")
-        st.caption("Your vote has been recorded anonymously.")
-
-        if st.session_state.get("last_proof"):
-            st.subheader("Proof")
-            st.code(st.session_state.last_proof, language="json")
+        if st.session_state.step == 4:
+            st.success(st.session_state.server_message or "Vote submitted successfully.")
+            st.caption("Your vote has been recorded anonymously.")
+        else:
+            st.error(st.session_state.server_message or "Vote failed.")
 
         if st.button("Start Over", use_container_width=True):
             reset_voter_flow()

@@ -1,7 +1,5 @@
 from database import VotingDatabase
 from zkp_circuit import VotingCircuit
-import hashlib
-import json
 
 """
 Server-side:
@@ -15,6 +13,7 @@ class VotingServer:
     def __init__(self):
         self.db = VotingDatabase()
         self.circuit = VotingCircuit()
+
     
     def setup_election(self):
         """Initialize election with 3 candidates"""
@@ -40,7 +39,7 @@ class VotingServer:
             return token
         return None
     
-    def receive_vote(self, voter_token, proof_data, public_inputs):
+    def receive_vote(self, voter_token_hash, proof_data, public_candidate_input):
         """
         Receive vote from client with ZKP proof
         This function:
@@ -52,7 +51,7 @@ class VotingServer:
         print("[SERVER] Receiving vote submission...")
         
         # Step 1: Verify voter token and check double voting
-        is_valid, result = self.db.verify_voter_token(voter_token)
+        is_valid, result = self.db.verify_voter_token(voter_token_hash)
         
         if not is_valid:
             print(f"[SERVER] Vote rejected: {result}")
@@ -62,8 +61,7 @@ class VotingServer:
         print(f"[SERVER] Voter token validated (Voter ID: {voter_id})")
         
         # Step 2: Verify ZKP proof
-        voter_token_hash = hashlib.sha256(voter_token.encode()).hexdigest()
-        proof_valid, verification_msg = self.circuit.verify_vote_proof(proof_data)  # original call passed 3 args (proof_data, public_inputs, voter_token_hash) but verify_vote_proof in zkp_circuit.py only accepts proof_data
+        proof_valid, verification_msg = self.circuit.verify_vote_proof(proof_data) 
         
         if not proof_valid:
             print(f"[SERVER] Proof verification failed: {verification_msg}")
@@ -72,7 +70,7 @@ class VotingServer:
         print("[SERVER] ZKP proof verified successfully")
         
         # Step 3: Record vote
-        success, message = self.db.record_vote(voter_token, proof_data, public_inputs)
+        success, message = self.db.record_vote(voter_token_hash, proof_data, public_candidate_input)
         
         if success:
             print(f"[SERVER] Vote recorded: {message}")
@@ -81,30 +79,9 @@ class VotingServer:
         
         return success, message
     
-    def tally_votes_and_display(self):
+    def tally_votes(self):
         """
-        Tally all verified votes and display results
+        Tally all verified votes
         """
-        print("\n" + "="*50)
-        print("TALLYING VOTES")
-        print("="*50)
-        
-        results = self.db.tally_votes()
-        
-        print("\nFinal Election Results:")
-        print("-" * 50)
-        
-        total_votes = sum(count for _, _, count in results)
-        
-        for candidate_id, candidate_name, vote_count in results:
-            percentage = (vote_count / total_votes * 100) if total_votes > 0 else 0
-            print(f"{candidate_name}: {vote_count} votes ({percentage:.1f}%)")
-        
-        print("-" * 50)
-        print(f"Total votes cast: {total_votes}")
-        
-        return results
+        return self.db.tally_votes()
 
-    def get_results(self):
-        """Get current election results"""
-        return self.db.get_election_results()

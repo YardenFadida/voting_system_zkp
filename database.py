@@ -1,8 +1,6 @@
 import sqlite3
 import hashlib
 import secrets
-from datetime import datetime
-
 class VotingDatabase:
     def __init__(self, db_name='zkp_voting_system.db'):
         self.db_name = db_name
@@ -18,7 +16,7 @@ class VotingDatabase:
             CREATE TABLE IF NOT EXISTS eligible_voters (
                 voter_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 voter_hash TEXT UNIQUE NOT NULL,
-                voter_token TEXT UNIQUE NOT NULL,
+                voter_token_hash TEXT UNIQUE NOT NULL,
                 registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 has_voted BOOLEAN DEFAULT 0,
                 is_active BOOLEAN DEFAULT 1
@@ -40,18 +38,9 @@ class VotingDatabase:
                 vote_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 voter_token_hash TEXT UNIQUE NOT NULL,
                 proof_data TEXT NOT NULL,
-                public_inputs TEXT NOT NULL,
+                candidate TEXT NOT NULL,
                 vote_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_verified BOOLEAN DEFAULT 0
-            )
-        ''')
-        
-        # Table 4: Vote Tally (Reference the candidates table)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS vote_tally (
-                candidate_id INTEGER PRIMARY KEY,
-                vote_count INTEGER DEFAULT 0,
-                FOREIGN KEY (candidate_id) REFERENCES candidates(candidate_id)
             )
         ''')
         
@@ -64,16 +53,18 @@ class VotingDatabase:
         cursor = conn.cursor()
         
         # Create a unique hash and token for the voter that contain they personal information provided by the admin
-        # This essentially hides the personal information in a non reversible value (HASH)
+        # Hash value used to prevent double registration of the same voter with the same ID
         voter_hash = hashlib.sha256(voter_identifier.encode()).hexdigest()
         # This part is the secret token provided to the voter in order to cast their votes
         voter_token = secrets.token_urlsafe(32)
+        # This is the part we store in order to verify the validity of the token
+        voter_token_hash = hashlib.sha256(voter_token.encode()).hexdigest()
         
         try:
             cursor.execute('''
-                INSERT INTO eligible_voters (voter_hash, voter_token)
+                INSERT INTO eligible_voters (voter_hash, voter_token_hash)
                 VALUES (?, ?)
-            ''', (voter_hash, voter_token))
+            ''', (voter_hash, voter_token_hash))
             
             conn.commit()
             print(f"[DB] Voter added successfully. Token: {voter_token}")
@@ -97,11 +88,6 @@ class VotingDatabase:
             
             candidate_id = cursor.lastrowid
             
-            cursor.execute('''
-                INSERT INTO vote_tally (candidate_id, vote_count)
-                VALUES (?, 0)
-            ''', (candidate_id,))
-            
             conn.commit()
             return candidate_id
         except sqlite3.IntegrityError:
@@ -110,19 +96,23 @@ class VotingDatabase:
         finally:
             conn.close()
     
-    def verify_voter_token(self, voter_token):
+    def verify_voter_token(self, voter_token_hash):
         """Verify if voter token is valid and the voter did not vote before in this election"""
-        conn = sqlite3.connect(self.db_name)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT voter_id, has_voted, is_active 
-            FROM eligible_voters 
-            WHERE voter_token = ?
-        ''', (voter_token,))
-        
-        result = cursor.fetchone()
-        conn.close()
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT voter_id, has_voted, is_active 
+                FROM eligible_voters 
+                WHERE voter_token_hash = ?
+            ''', (voter_token_hash,))
+            
+            result = cursor.fetchone()
+        except Exception as e:
+            return False, str(e)
+        finally:
+            conn.close()
         
         if not result:
             return False, "Invalid voter token"
@@ -137,85 +127,50 @@ class VotingDatabase:
         
         return True, voter_id
     
-    def record_vote(self, voter_token, proof_data, public_inputs):
-        """Record a vote with the voter proof and token"""
+    def record_vote(self, voter_token_hash, proof_data, public_candidate_input):
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
-        
-        # Hash the voter token for privacy
-        token_hash = hashlib.sha256(voter_token.encode()).hexdigest()
-        
         try:
-            # Check double voting attempt
             cursor.execute('''
-                SELECT vote_id FROM votes WHERE voter_token_hash = ?
-            ''', (token_hash,))
-            
-            # If row exists, prevent double voting.
-            if cursor.fetchone():
-                conn.close()
-                return False, "Double voting detected"
-            
-            # Record vote
+                INSERT INTO votes (voter_token_hash, proof_data, candidate, is_verified)
+                VALUES (?, ?, ?, 1)
+            ''', (voter_token_hash, proof_data, public_candidate_input))
+
             cursor.execute('''
-                INSERT INTO votes (voter_token_hash, proof_data, public_inputs, is_verified)
-                VALUES (?, ?, ?, ?)
-            ''', (token_hash, proof_data, public_inputs, 1))
-            
-            # Mark voter as voted
-            cursor.execute('''
-                UPDATE eligible_voters 
-                SET has_voted = 1 
-                WHERE voter_token = ?
-            ''', (voter_token,))
-            
+                UPDATE eligible_voters SET has_voted = 1 WHERE voter_token_hash = ?
+            ''', (voter_token_hash,))
+
             conn.commit()
-            conn.close()
             return True, "Vote recorded successfully"
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            return False, "Double voting detected"
         except Exception as e:
-            conn.close()
+            conn.rollback()
             return False, str(e)
-    
+        finally:
+            conn.close()
+
     def tally_votes(self):
         """Tally all verified votes"""
-        conn = sqlite3.connect(self.db_name)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT c.candidate_id, c.candidate_name, COUNT(v.vote_id) as votes
-            FROM candidates c
-            LEFT JOIN votes v ON c.candidate_id = CAST(v.public_inputs AS INTEGER)
-            WHERE v.is_verified = 1 OR v.is_verified IS NULL
-            GROUP BY c.candidate_id, c.candidate_name
-        ''')
-        
-        results = cursor.fetchall()
-        
-        # Update tally table
-        for candidate_id, _, vote_count in results:
+        try:
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            
             cursor.execute('''
-                UPDATE vote_tally 
-                SET vote_count = ? 
-                WHERE candidate_id = ?
-            ''', (vote_count, candidate_id))
+                SELECT c.candidate_id, c.candidate_name, COUNT(v.vote_id) as votes
+                FROM candidates c
+                LEFT JOIN votes v ON c.candidate_id = CAST(v.candidate AS INTEGER)
+                    AND v.is_verified = 1 
+                GROUP BY c.candidate_id, c.candidate_name 
+            ''')
+            
+            results = cursor.fetchall()
+            return results
+        except Exception as e:
+            print(f"[DB] Tally error: {e}")
+            return []
+        finally:
+            conn.close()
         
-        conn.commit()
-        conn.close()
         
-        return results
-    
-    def get_election_results(self):
-        """Get final election results"""
-        conn = sqlite3.connect(self.db_name)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT c.candidate_name, vt.vote_count
-            FROM candidates c
-            JOIN vote_tally vt ON c.candidate_id = vt.candidate_id
-            ORDER BY vt.vote_count DESC
-        ''')
-        
-        results = cursor.fetchall()
-        conn.close()
-        return results

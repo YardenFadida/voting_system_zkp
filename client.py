@@ -1,9 +1,5 @@
 import hashlib
 
-from server import VotingServer
-from zkp_circuit import VotingCircuit
-
-
 class VotingClient:
     """
     Client-side helper.
@@ -12,40 +8,41 @@ class VotingClient:
       2. Hand the proof to server.receive_vote, which handles
          token validation, ZKP verification, and vote recording
     """
+    @staticmethod
+    def submit_vote(circuit, server, voter_token, candidate_id):
 
-    def __init__(self, server=None):
-        self.server = server if server is not None else VotingServer()
-
-    def submit_vote(self, voter_token, candidate_id):
-        voter_token = (voter_token or "").strip()
         candidate_id = int(candidate_id)
+        voter_token = (voter_token or "").strip()
 
         if not voter_token:
-            return False, "Enter your voter token.", None
+            return False, "Enter your voter token."
 
-        # Generate ZK proof client-side
+        # Generate hash of voter token (public parameter)
+        voter_token_hash = hashlib.sha256(voter_token.encode()).hexdigest()
+        print(f"[CLIENT] Voter token hash: {voter_token_hash[:16]}...")
+        
+        # Generate ZKP proof
         try:
-            voter_token_hash = hashlib.sha256(voter_token.encode("utf-8")).hexdigest()
-            proof_json = VotingCircuit.generate_vote_proof(
-                voter_token=voter_token,
-                candidate_id=candidate_id,
-                voter_token_hash=voter_token_hash,
+            print("[CLIENT] Generating zero-knowledge proof...")
+            proof_data = circuit.generate_vote_proof(
+                voter_token, 
+                candidate_id, 
+                voter_token_hash
             )
         except Exception as e:
-            return False, f"Proof generation failed: {str(e)}", None
-
-        # Hand everything to the server — it validates the token,
-        # verifies the proof, and records the vote
-        success, message = self.server.receive_vote(
-            voter_token=voter_token,
-            proof_data=proof_json,
-            public_inputs=str(candidate_id),
-        )
-
-        vote_package = {
-            "voter_token": voter_token,
-            "candidate_id": candidate_id,
-            "proof_data": proof_json,
-        }
-
-        return success, message, vote_package
+            return False, f"Proof generation failed: {str(e)}"
+        try:
+            # Securely transmit to server (in production, use HTTPS/TLS)
+            print("\n[CLIENT] Securely transmitting proof to server...")
+            success, message = server.receive_vote(voter_token_hash, proof_data, candidate_id)
+            
+            if success:
+                print(f"[CLIENT] ✓ Vote submitted successfully: {message}")
+            else:
+                print(f"[CLIENT] ✗ Vote submission failed: {message}")
+            
+            return success, message
+            
+        except Exception as e:
+            print(f"[CLIENT] Error during vote submission: {str(e)}")
+            return False, str(e)
