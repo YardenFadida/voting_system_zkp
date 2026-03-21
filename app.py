@@ -21,17 +21,11 @@ def fetch_df(query, params=None):
     conn = sqlite3.connect(DB_NAME)
     try:
         df = pd.read_sql_query(query, conn, params=params or ())
+    except Exception:
+        df = pd.DataFrame()
     finally:
         conn.close()
     return df
-
-
-def safe_refresh_tally():
-    try:
-        server.tally_votes()   
-    except Exception as e:
-        print(f"[APP] Error during Tally: {str(e)}")
-
 
 def init_session_state():
     defaults = {
@@ -87,7 +81,6 @@ def admin_side():
             try:
                 print("[APP] Initialize election")
                 server.setup_election()
-                safe_refresh_tally()
                 st.success("Election initialized.")
             except Exception as e:
                 st.error(str(e))
@@ -118,18 +111,13 @@ def admin_side():
 
     st.divider()
 
-    if st.button("Refresh", use_container_width=True):
-        safe_refresh_tally()
-        st.rerun()
-
     st.subheader("Election Results")
-    results_df = fetch_df("""
-        SELECT c.candidate_id, c.candidate_name, vt.vote_count
-        FROM candidates c
-        LEFT JOIN vote_tally vt ON c.candidate_id = vt.candidate_id
-        ORDER BY c.candidate_id
-    """)
-    st.dataframe(results_df, use_container_width=True, hide_index=True)
+    results = server.tally_votes()
+    if results:
+        results_df = pd.DataFrame(results, columns=["candidate_id", "candidate_name", "vote_count"])
+        st.dataframe(results_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No results yet.")
 
     st.subheader("Candidates Table")
     candidates_df = fetch_df("""
@@ -245,7 +233,6 @@ def voter_ballot():
                 )
                 st.session_state.server_message = message
                 if success:
-                    safe_refresh_tally()
                     st.session_state.step = 4
                     st.rerun()
                 else:
