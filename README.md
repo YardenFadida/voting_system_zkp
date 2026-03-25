@@ -40,8 +40,9 @@ venv\bin\activate
 ```bash
 pip intsall -r requirements.txt
 ```
-## 4. Run ??????
-TBD
- 
+## 4. Run (streamlit)
+```bash
+python -m streamlit run app.py
+```
 
 

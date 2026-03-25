@@ -1,145 +1,267 @@
-# app.py
-import json
-import hashlib
+import sqlite3
+import pandas as pd
 import streamlit as st
-from zkp_circuit import VotingCircuit
+
+from client import VotingClient
+from server import VotingServer
+
+DB_NAME = "zkp_voting_system.db"
+
+@st.cache_resource
+def setup_server():
+    return VotingServer()
+
+# Initialize server
+server = setup_server()
 
 # ----------------------------
-# Voter ballot UI
+# Helpers
 # ----------------------------
-def ballot_ui():
-    st.header("Secure Voting Portal")
+def fetch_df(query, params=None):
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        df = pd.read_sql_query(query, conn, params=params or ())
+    except Exception:
+        df = pd.DataFrame()
+    finally:
+        conn.close()
+    return df
 
-    if "step" not in st.session_state:
-        st.session_state.step = 1
-    if "last_proof" not in st.session_state:
-        st.session_state.last_proof = ""
-    if "last_hash" not in st.session_state:
-        st.session_state.last_hash = ""
-    if "last_candidate" not in st.session_state:
-        st.session_state.last_candidate = None
+def init_session_state():
+    defaults = {
+        "step": 1,
+        "voter_token": "",
+        "last_candidate_id": None,
+        "last_candidate_name": "",
+        "server_message": "",
+        "admin_last_token": "",
+        "vote_submitted": False
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+
+def candidate_options():
+    df = fetch_df("""
+        SELECT candidate_id, candidate_name
+        FROM candidates
+        ORDER BY candidate_id
+    """)
+    if df.empty:
+        return []
+    return [(int(row["candidate_id"]), str(row["candidate_name"])) for _, row in df.iterrows()]
+
+
+def reset_voter_flow():
+    for key in [
+        "step",
+        "voter_token",
+        "last_candidate_id",
+        "last_candidate_name",
+        "server_message",
+        "vote_submitted"
+    ]:
+        if key in st.session_state:
+            del st.session_state[key]
+    init_session_state()
+
+
+# ----------------------------
+# Admin side
+# ----------------------------
+def admin_side():
+    st.header("Admin Side")
+
+    col1, col2= st.columns(2)
+
+    with col1:
+        st.subheader("Election Setup")
+        if st.button("Load / Initialize Election", use_container_width=True):
+            try:
+                print("[APP] Initialize election")
+                server.setup_election()
+                st.success("Election initialized.")
+            except Exception as e:
+                st.error(str(e))
+
+    with col2:
+        st.subheader("Voter Registration")
+        voter_identifier = st.text_input(
+            "Register voter by name, email, or ID",
+            key="admin_voter_identifier",
+        )
+
+        if st.button("Register Voter", use_container_width=True):
+            if not voter_identifier.strip():
+                st.error("Enter a voter identifier.")
+            else:
+                try:
+                    token = server.admin_register_voter(voter_identifier.strip())
+                    if token:
+                        st.session_state.admin_last_token = token
+                        st.success("Voter registered successfully.")
+                    else:
+                        st.error("Voter already exists or registration failed.")
+                except Exception as e:
+                    st.error(str(e))
+
+    if st.session_state.get("admin_last_token"):
+        st.info(f"Latest voter token: {st.session_state.admin_last_token}")
+
+    st.divider()
+
+    st.subheader("Election Results")
+    results = server.tally_votes()
+    if results:
+        results_df = pd.DataFrame(results, columns=["candidate_id", "candidate_name", "vote_count"])
+        st.dataframe(results_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No results yet.")
+
+    st.subheader("Candidates Table")
+    candidates_df = fetch_df("""
+        SELECT candidate_id, candidate_name, description
+        FROM candidates
+        ORDER BY candidate_id
+    """)
+    st.dataframe(candidates_df, use_container_width=True, hide_index=True)
+
+    st.subheader("Eligible Voters Table")
+    voters_df = fetch_df("""
+        SELECT voter_id, voter_hash, voter_token_hash, registration_date, has_voted, is_active
+        FROM eligible_voters
+        ORDER BY voter_id
+    """)
+    st.dataframe(voters_df, use_container_width=True, hide_index=True)
+
+    st.subheader("Votes Table")
+    votes_df = fetch_df("""
+        SELECT vote_id, voter_token_hash, candidate, vote_timestamp, is_verified
+        FROM votes
+        ORDER BY vote_id
+    """)
+    st.dataframe(votes_df, use_container_width=True, hide_index=True)
+
+    st.subheader("Quick Status Checks")
+
+    if not voters_df.empty:
+        voted_count = int((voters_df["has_voted"] == 1).sum())
+        active_count = int((voters_df["is_active"] == 1).sum())
+        total_voters = len(voters_df)
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Registered Voters", total_voters)
+        c2.metric("Already Voted", voted_count)
+        c3.metric("Active Voters", active_count)
+
+
+# ----------------------------
+# Voter ballot
+# ----------------------------
+def voter_ballot():
+    st.header("Voter Ballot")
+
+    options = candidate_options()
+
+    if not options:
+        st.warning("No candidates found. Go to the Admin Side and load the election first.")
+        return
+
+    label_map = {cid: name for cid, name in options}
 
     if st.session_state.step == 1:
         st.subheader("Step 1: Enter your voter token")
-        voter_token = st.text_input("Voter token", type="password")
+        token_input = st.text_input("Voter token", type="password", value=st.session_state.voter_token)
 
         if st.button("Continue", use_container_width=True):
-            if not voter_token.strip():
+            if not token_input.strip():
                 st.error("Enter your voter token.")
                 return
 
-            token_hash = hashlib.sha256(voter_token.encode("utf-8")).hexdigest()
-            st.session_state.voter_token = voter_token
-            st.session_state.last_hash = token_hash
+            st.session_state.voter_token = token_input.strip()
             st.session_state.step = 2
             st.rerun()
 
     elif st.session_state.step == 2:
-        st.subheader("Step 2: Select ONE candidate")
-        choice = st.radio(
+        st.subheader("Step 2: Select one candidate")
+
+        candidate_ids = [cid for cid, _ in options]
+        selected_id = st.radio(
             "Candidates",
-            options=[
-                ("Candidate 1", 1),
-                ("Candidate 2", 2),
-                ("Candidate 3", 3),
-            ],
-            format_func=lambda x: x[0],
+            options=candidate_ids,
+            format_func=lambda cid: label_map[cid],
         )
-        candidate_id = choice[1]
 
         col1, col2 = st.columns(2)
+
         with col1:
             if st.button("Back", use_container_width=True):
                 st.session_state.step = 1
                 st.rerun()
+
         with col2:
             if st.button("Review", use_container_width=True):
-                st.session_state.last_candidate = candidate_id
+                st.session_state.last_candidate_id = int(selected_id)
+                st.session_state.last_candidate_name = label_map[int(selected_id)]
                 st.session_state.step = 3
                 st.rerun()
 
     elif st.session_state.step == 3:
         st.subheader("Step 3: Confirm your vote")
-        st.write(f"You selected: **Candidate {st.session_state.last_candidate}**")
+        st.write(f"You selected: **{st.session_state.last_candidate_name}**")
 
         col1, col2 = st.columns(2)
+
         with col1:
             if st.button("Go Back", use_container_width=True):
                 st.session_state.step = 2
                 st.rerun()
 
         with col2:
-            if st.button("Confirm Vote", use_container_width=True):
-                try:
-                    proof_json = VotingCircuit.generate_vote_proof(
-                        voter_token=st.session_state.voter_token,
-                        candidate_id=int(st.session_state.last_candidate),
-                        voter_token_hash=st.session_state.last_hash,
-                    )
-                    st.session_state.last_proof = proof_json
+            if st.button(
+                "Confirm Vote",
+                use_container_width=True,
+                disabled=st.session_state.vote_submitted  # ← simple flag
+            ):
+                st.session_state.vote_submitted = True     # ← set immediately
+                success, message = VotingClient.submit_vote(
+                    circuit=server.circuit,
+                    server=server,
+                    voter_token=st.session_state.voter_token,
+                    candidate_id=st.session_state.last_candidate_id,
+                )
+                st.session_state.server_message = message
+                if success:
                     st.session_state.step = 4
                     st.rerun()
-                except Exception as e:
-                    st.error(str(e))
+                else:
+                    st.session_state.step = 5
+                    st.rerun()  # ← rerun so button renders as disabled immediately
 
-    else:  # step 4
-        st.success("Vote submitted successfully.")
-        st.caption("Your vote has been recorded anonymously.")
-        if st.session_state.get("last_proof"):
-            st.subheader("Proof (for demo only)")
-            st.code(st.session_state.last_proof, language="json")
+    else:
+        if st.session_state.step == 4:
+            st.success(st.session_state.server_message or "Vote submitted successfully.")
+            st.caption("Your vote has been recorded anonymously.")
+        else:
+            st.error(st.session_state.server_message or "Vote failed.")
 
         if st.button("Start Over", use_container_width=True):
-            for k in ["step", "voter_token", "last_proof", "last_hash", "last_candidate"]:
-                if k in st.session_state:
-                    del st.session_state[k]
+            reset_voter_flow()
             st.rerun()
-
-
-# ----------------------------
-# Developer / demo panel
-# ----------------------------
-def developer_panel():
-    st.header("Developer Panel (for demo / debugging)")
-
-    voter_token = st.text_input("Voter token", type="password", key="dev_token")
-    candidate_id = st.selectbox("Candidate", [1, 2, 3], key="dev_candidate")
-
-    auto_hash = ""
-    if voter_token.strip():
-        auto_hash = hashlib.sha256(voter_token.encode("utf-8")).hexdigest()
-
-    voter_token_hash = st.text_input(
-        "Voter token hash (sha256 hex)",
-        value=auto_hash,
-        key="dev_hash",
-        help="Auto-filled from the token above. You can also paste your own.",
-    )
-
-    if st.button("Generate proof", key="dev_gen"):
-        try:
-            proof_json = VotingCircuit.generate_vote_proof(
-                voter_token=voter_token,
-                candidate_id=int(candidate_id),
-                voter_token_hash=voter_token_hash,
-            )
-            st.success("Proof generated")
-            st.code(proof_json, language="json")
-            st.session_state.dev_last_proof = proof_json
-        except Exception as e:
-            st.error(str(e))
 
 
 # ----------------------------
 # App shell
 # ----------------------------
-st.set_page_config(page_title="ZK Voting Demo", layout="centered")
+st.set_page_config(page_title="ZK Voting Demo", layout="wide")
+init_session_state()
+
 st.title("ZK Vote Demo")
 
+mode = st.sidebar.radio("View", ["Admin Side", "Voter Ballot"], index=0)
 
-mode = st.sidebar.radio("View", ["Developer Panel", "Voter Ballot"], index=0)
-
-if mode == "Developer Panel":
-    developer_panel()
+if mode == "Admin Side":
+    admin_side()
 else:
-    ballot_ui()
+    voter_ballot()

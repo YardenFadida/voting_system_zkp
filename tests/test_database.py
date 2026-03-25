@@ -4,6 +4,7 @@
 
 import pytest
 import os
+import hashlib
 from database import VotingDatabase
 
 
@@ -33,7 +34,8 @@ def test_duplicate_voter_returns_none(db):
 
 def test_valid_token_is_verified(db):
     token = db.add_eligible_voter("voter_002")
-    valid, result = db.verify_voter_token(token)
+    voter_token_hash = hashlib.sha256(token.encode()).hexdigest()
+    valid, result = db.verify_voter_token(voter_token_hash)
     assert valid is True
     assert isinstance(result, int)  # returns voter_id
 
@@ -48,20 +50,22 @@ def test_invalid_token_rejected(db):
 
 def test_double_vote_prevented(db):
     token = db.add_eligible_voter("voter_003")
+    voter_token_hash = hashlib.sha256(token.encode()).hexdigest()
     db.add_candidate("Alice")
 
-    db.record_vote(token, proof_data="proof_xyz", public_inputs="1")
-    success, msg = db.record_vote(token, proof_data="proof_xyz", public_inputs="1")
+    db.record_vote(voter_token_hash, proof_data="proof_xyz", public_candidate_input="1")
+    success, msg = db.record_vote(voter_token_hash, proof_data="proof_xyz", public_candidate_input="1")
     assert success is False
     assert "double" in msg.lower() or "Double" in msg
 
 
 def test_voter_marked_as_voted(db):
     token = db.add_eligible_voter("voter_004")
+    voter_token_hash = hashlib.sha256(token.encode()).hexdigest()
     db.add_candidate("Bob")
-    db.record_vote(token, proof_data="proof_abc", public_inputs="1")
+    db.record_vote(voter_token_hash, proof_data="proof_abc", public_candidate_input="1")
 
-    valid, msg = db.verify_voter_token(token)
+    valid, msg = db.verify_voter_token(voter_token_hash)
     assert valid is False
     assert "already voted" in msg.lower()
 

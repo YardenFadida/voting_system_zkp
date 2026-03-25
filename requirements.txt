@@ -1,2 +1,3 @@
 zksnake
 streamlit
+pandas
