@@ -29,6 +29,8 @@ class VotingClient:
                 candidate_id, 
                 voter_token_hash
             )
+            print("[CLIENT] Proof generated successfully")
+            print(f"[CLIENT] Proof size: {len(proof_data)} bytes")
         except Exception as e:
             return False, f"Proof generation failed: {str(e)}"
         try:

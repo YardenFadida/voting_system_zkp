@@ -8,6 +8,36 @@ A privacy-preserving voting system built on the **zk-SNARK** (Zero-Knowledge Suc
 
 > TBD
 
+## Overview
+
+This system enables verifiable, anonymous voting through the following guarantees:
+- **Privacy**: A voter's choice is never revealed to the server — only a
+  cryptographic proof of a valid vote is transmitted.
+- **Integrity**: Double voting is prevented at the database level via hashed
+  token tracking.
+- **Verifiability**: Every recorded vote carries a zk-SNARK proof that can be
+  independently verified.
+
+> **⚠️ Disclaimer:** This implementation runs all components in-process with no
+> network communication. For any real-world deployment, **all channels must be
+> encrypted** — client↔server via HTTPS/TLS, and server↔database via encrypted
+> connections or a secured local socket. Admin token distribution must also
+> occur over a private, out-of-band channel.
+
+---
+
+## Architecture
+
+The system is composed of five modules:
+
+| Module             | File               | Responsibility                                              |
+|--------------------|--------------------|-------------------------------------------------------------|
+| Frontend / App     | `app.py`           | Streamlit UI for voters and admins                          |
+| Server             | `server.py`        | Voter registration, proof verification, vote recording      |
+| Client             | `client.py`        | ZKP proof generation and secure transmission                |
+| Database           | `database.py`      | SQLite persistence for voters, candidates, and votes        |
+| ZKP Circuit        | `zkp_circuit.py`   | Groth16 zk-SNARK circuit setup, proving, and verification   |
+
 ---
 
 ## 🚀 Getting Started
@@ -17,7 +47,7 @@ A privacy-preserving voting system built on the **zk-SNARK** (Zero-Knowledge Suc
 ### Run Tests
 
 ```bash
-pytest tests/test_zkp_circuit.py
+pytest tests/test_*.py
 ```
 
 # How to Run Our Code

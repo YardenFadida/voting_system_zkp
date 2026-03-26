@@ -1,5 +1,6 @@
 import hashlib
 import json
+import time
 
 try:
     from zksnake.groth16 import Groth16, Proof
@@ -11,6 +12,13 @@ try:
 except ImportError as e:
     print(f"[DEBUG] Error during imports {e}")
 
+def measure_runtime(func):
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        result = func(*args, **kwargs)
+        print(f"Proof runtime: {func.__name__}: {time.perf_counter() - start:.4f}s")
+        return result
+    return wrapper
 
 class VotingCircuit:
     """zk-SNARK implementation using zksnake lib"""
@@ -98,6 +106,7 @@ class VotingCircuit:
 
     
     @staticmethod
+    @measure_runtime
     def generate_vote_proof(voter_token, candidate_id, voter_token_hash):
         """Generate zk-SNARK proof for vote"""
         # Validate inputs
@@ -134,6 +143,7 @@ class VotingCircuit:
             raise
 
     @staticmethod
+    @measure_runtime
     def verify_vote_proof(proof_data):
         """Verify zk-SNARK proof"""
         try:
