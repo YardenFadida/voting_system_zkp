@@ -4,11 +4,7 @@ A privacy-preserving voting system built on the **zk-SNARK** (Zero-Knowledge Suc
 
 ---
 
-## 📐 Design
-
-> TBD
-
-## Overview
+## 📐 Design Overview
 
 This system enables verifiable, anonymous voting through the following guarantees:
 - **Privacy**: A voter's choice is never revealed to the server — only a
