@@ -267,14 +267,18 @@ def voter_ballot():
         with col2:
             if st.button("Confirm Vote", use_container_width=True, disabled=st.session_state.vote_submitted):
                 st.session_state.vote_submitted = True
-                success, message = VotingClient.submit_vote(
-                    circuit=server.circuit,
-                    server=server,
-                    voter_token=st.session_state.voter_token,
-                    candidate_id=st.session_state.last_candidate_id,
-                )
-                st.session_state.server_message = message
-                st.session_state.step = 4 if success else 5
+                try:
+                    success, message = VotingClient.submit_vote(
+                        circuit=server.circuit,
+                        server=server,
+                        voter_token=st.session_state.voter_token,
+                        candidate_id=st.session_state.last_candidate_id,
+                    )
+                    st.session_state.server_message = message
+                    st.session_state.step = 4 if success else 5
+                except Exception as e:
+                    st.session_state.server_message = str(e) or repr(e)
+                    st.session_state.step = 5
                 st.rerun()
     else:
         if st.session_state.step == 4:
