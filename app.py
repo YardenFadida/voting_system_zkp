@@ -87,6 +87,22 @@ class _StreamlitStdout:
     def flush(self):
         self._orig.flush()
 
+def check_admin_password():
+    """Returns True if admin is authenticated."""
+    if st.session_state.get("admin_authenticated"):
+        return True
+    
+    st.subheader("Admin Access Required")
+    password = st.text_input("Enter admin password", type="password", key="admin_pw_input")
+    
+    if st.button("Login", use_container_width=True):
+        if password == st.secrets["ADMIN_PASSWORD"]:
+            st.session_state.admin_authenticated = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+    
+    return False
 
 
 # ----------------------------
@@ -94,7 +110,11 @@ class _StreamlitStdout:
 # ----------------------------
 def admin_side():
     st.header("Admin Side")
-    col1, col2 = st.columns(2)
+    if st.button("Logout"):
+        st.session_state.admin_authenticated = False
+        st.rerun()
+
+    col1, col2= st.columns(2)
 
     with col1:
         st.subheader("Election Setup")
@@ -267,6 +287,7 @@ st.divider()
 st.title("ZK Vote Demo")
 mode = st.sidebar.radio("View", ["Admin Side", "Voter Ballot"], index=0)
 if mode == "Admin Side":
-    admin_side()
+    if check_admin_password():
+        admin_side()
 else:
     voter_ballot()

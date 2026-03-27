@@ -1,3 +1,3 @@
-zksnake
+zksnake @ git+https://github.com/Merricx/zksnake.git
 streamlit
 pandas
