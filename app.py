@@ -1,5 +1,7 @@
 import sqlite3
 import sys
+import html
+import io
 import pandas as pd
 import streamlit as st
 
@@ -74,13 +76,13 @@ def reset_voter_flow():
 class _StreamlitStdout:
     def __init__(self, placeholder):
         self._placeholder = placeholder
-        self._orig = sys.__stdout__ or open("/dev/null", "w")
+        self._orig = sys.__stdout__ or io.StringIO()
 
     def write(self, s):
         self._orig.write(s)
         st.session_state.debug_buffer += s
         self._placeholder.markdown(
-            f"<div style='{_DIV_STYLE}'>{st.session_state.debug_buffer}</div>",
+            f"<div style='{_DIV_STYLE}'>{html.escape(st.session_state.debug_buffer)}</div>",
             unsafe_allow_html=True,
         )
 
@@ -112,7 +114,21 @@ def admin_side():
     st.header("Admin Side")
     if st.button("Logout"):
         st.session_state.admin_authenticated = False
+        sys.stdout = sys.__stdout__           # restore stdout on logout
         st.rerun()
+
+    # Debug output — only visible to authenticated admin
+    st.caption("Debug Output")
+    _debug_placeholder = st.empty()
+    if not isinstance(sys.stdout, _StreamlitStdout):
+        sys.stdout = _StreamlitStdout(_debug_placeholder)
+    else:
+        sys.stdout._placeholder = _debug_placeholder
+    _debug_placeholder.markdown(
+        f"<div style='{_DIV_STYLE}'>{st.session_state.debug_buffer or '(no output yet)'}</div>",
+        unsafe_allow_html=True,
+    )
+    st.divider()
 
     col1, col2= st.columns(2)
 
@@ -277,13 +293,6 @@ def voter_ballot():
 st.set_page_config(page_title="ZK Voting Demo", layout="wide")
 init_session_state()
 
-st.caption("Debug Output")
-_debug_placeholder = st.empty()
-sys.stdout = _StreamlitStdout(_debug_placeholder)
-_debug_placeholder.markdown(
-    f"<div style='{_DIV_STYLE}'>{st.session_state.debug_buffer or '(no output yet)'}</div>",
-    unsafe_allow_html=True)
-st.divider()
 st.title("ZK Vote Demo")
 mode = st.sidebar.radio("View", ["Admin Side", "Voter Ballot"], index=0)
 if mode == "Admin Side":
