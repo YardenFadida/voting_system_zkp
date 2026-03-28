@@ -67,6 +67,10 @@ class VotingCircuit:
                 qap.from_r1cs(r1cs)
                 proof_system.qap = qap
 
+                print(f"[CIRCUIT] PK loaded, tau_1 length: {len(pk.tau_1)}")
+                print(f"[CIRCUIT] VK loaded, IC length: {len(vk.ic)}")
+                print(f"[CIRCUIT] QAP n_public: {qap.n_public}")
+
                 VotingCircuit._proof_system = proof_system
                 VotingCircuit._r1cs = r1cs 
                 print("[CIRCUIT] Keys loaded from Streamlit secrets")
