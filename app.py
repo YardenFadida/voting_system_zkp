@@ -97,7 +97,7 @@ def check_admin_password():
     st.subheader("Admin Access Required")
     password = st.text_input("Enter admin password", type="password", key="admin_pw_input")
     
-    if st.button("Login", use_container_width=True):
+    if st.button("Login", width='stretch'):
         if password == st.secrets["ADMIN_PASSWORD"]:
             st.session_state.admin_authenticated = True
             st.rerun()
@@ -134,7 +134,7 @@ def admin_side():
 
     with col1:
         st.subheader("Election Setup")
-        if st.button("Load / Initialize Election", use_container_width=True):
+        if st.button("Load / Initialize Election", width='stretch'):
             try:
                 print("[APP] Initialize election")
                 server.setup_election()
@@ -148,7 +148,7 @@ def admin_side():
             "Register voter by name, email, or ID",
             key="admin_voter_identifier",
         )
-        if st.button("Register Voter", use_container_width=True):
+        if st.button("Register Voter", width='stretch'):
             if not voter_identifier.strip():
                 st.error("Enter a voter identifier.")
             else:
@@ -171,7 +171,7 @@ def admin_side():
     results = server.tally_votes()
     if results:
         results_df = pd.DataFrame(results, columns=["candidate_id", "candidate_name", "vote_count"])
-        st.dataframe(results_df, use_container_width=True, hide_index=True)
+        st.dataframe(results_df, width='stretch', hide_index=True)
     else:
         st.info("No results yet.")
 
@@ -181,7 +181,7 @@ def admin_side():
         FROM candidates
         ORDER BY candidate_id
     """)
-    st.dataframe(candidates_df, use_container_width=True, hide_index=True)
+    st.dataframe(candidates_df, width='stretch', hide_index=True)
 
     st.subheader("Eligible Voters Table")
     voters_df = fetch_df("""
@@ -189,7 +189,7 @@ def admin_side():
         FROM eligible_voters
         ORDER BY voter_id
     """)
-    st.dataframe(voters_df, use_container_width=True, hide_index=True)
+    st.dataframe(voters_df, width='stretch', hide_index=True)
 
     st.subheader("Votes Table")
     votes_df = fetch_df("""
@@ -197,7 +197,7 @@ def admin_side():
         FROM votes
         ORDER BY vote_id
     """)
-    st.dataframe(votes_df, use_container_width=True, hide_index=True)
+    st.dataframe(votes_df, width='stretch', hide_index=True)
 
     st.subheader("Quick Status Checks")
     if not voters_df.empty:
@@ -226,7 +226,7 @@ def voter_ballot():
     if st.session_state.step == 1:
         st.subheader("Step 1: Enter your voter token")
         token_input = st.text_input("Voter token", type="password", value=st.session_state.voter_token)
-        if st.button("Continue", use_container_width=True):
+        if st.button("Continue", width='stretch'):
             if not token_input.strip():
                 st.error("Enter your voter token.")
                 return
@@ -245,11 +245,11 @@ def voter_ballot():
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Back", use_container_width=True):
+            if st.button("Back", width='stretch'):
                 st.session_state.step = 1
                 st.rerun()
         with col2:
-            if st.button("Review", use_container_width=True):
+            if st.button("Review", width='stretch'):
                 st.session_state.last_candidate_id = int(selected_id)
                 st.session_state.last_candidate_name = label_map[int(selected_id)]
                 st.session_state.step = 3
@@ -261,11 +261,11 @@ def voter_ballot():
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Go Back", use_container_width=True):
+            if st.button("Go Back", width='stretch'):
                 st.session_state.step = 2
                 st.rerun()
         with col2:
-            if st.button("Confirm Vote", use_container_width=True, disabled=st.session_state.vote_submitted):
+            if st.button("Confirm Vote", width='stretch', disabled=st.session_state.vote_submitted):
                 st.session_state.vote_submitted = True
                 try:
                     success, message = VotingClient.submit_vote(
@@ -287,7 +287,7 @@ def voter_ballot():
         else:
             st.error(st.session_state.server_message or "Vote failed.")
 
-        if st.button("Start Over", use_container_width=True):
+        if st.button("Start Over", width='stretch'):
             reset_voter_flow()
             st.rerun()
 
@@ -298,7 +298,7 @@ st.set_page_config(page_title="ZK Voting Demo", layout="wide")
 init_session_state()
 
 st.title("ZK Vote Demo")
-mode = st.sidebar.radio("View", ["Admin Side", "Voter Ballot"], index=0)
+mode = st.sidebar.radio("View", ["Admin Side", "Voter Ballot"], index=1)
 if mode == "Admin Side":
     if check_admin_password():
         admin_side()
