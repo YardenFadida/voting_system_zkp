@@ -46,8 +46,12 @@ class VotingCircuit:
 
     @staticmethod
     def _setup_circuit():
+        print("[CIRCUIT] Starting setup...1") 
+
         if VotingCircuit._proof_system is not None:
             return
+        
+        print("[CIRCUIT] Starting setup...2") 
 
         # Try loading from Streamlit secrets first
         try:
