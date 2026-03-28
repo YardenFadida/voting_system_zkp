@@ -2,6 +2,7 @@ import hashlib
 import json
 import time
 import base64
+import streamlit as st
 
 try:
     from zksnake.groth16 import Groth16, Proof, ProvingKey, VerifyingKey
@@ -14,6 +15,7 @@ try:
 except ImportError as e:
     print(f"[DEBUG] Error during imports {e}")
 
+
 def measure_runtime(func):
     def wrapper(*args, **kwargs):
         start = time.perf_counter()
@@ -21,6 +23,7 @@ def measure_runtime(func):
         print(f"Proof runtime: {func.__name__}: {time.perf_counter() - start:.4f}s")
         return result
     return wrapper
+
 
 class VotingCircuit:
     """zk-SNARK implementation using zksnake lib"""
@@ -46,80 +49,64 @@ class VotingCircuit:
 
     @staticmethod
     def _setup_circuit():
-        print("[CIRCUIT] Starting setup...1") 
+        print("[CIRCUIT] Starting setup...1")
 
         if VotingCircuit._proof_system is not None:
             return
-        
-        print("[CIRCUIT] Starting setup...2") 
 
-        # Try loading from Streamlit secrets first
+        print("[CIRCUIT] Starting setup...2")
+
         try:
-            import streamlit as st
             if "ZKP_PROVING_KEY" in st.secrets and "ZKP_VERIFYING_KEY" in st.secrets:
-                pk = ProvingKey.from_bytes(base64.b64decode(st.secrets["ZKP_PROVING_KEY"]))
-                vk = VerifyingKey.from_bytes(base64.b64decode(st.secrets["ZKP_VERIFYING_KEY"]))
-
+                r1cs = VotingCircuit._build_r1cs()
                 proof_system = Groth16.__new__(Groth16)
                 proof_system.E = EllipticCurve("BN254")
                 proof_system.order = proof_system.E.order
-                proof_system.proving_key = pk
-                proof_system.verifying_key = vk
-
-                r1cs = VotingCircuit._build_r1cs()
+                proof_system.proving_key = ProvingKey.from_bytes(
+                    base64.b64decode(st.secrets["ZKP_PROVING_KEY"])
+                )
+                proof_system.verifying_key = VerifyingKey.from_bytes(
+                    base64.b64decode(st.secrets["ZKP_VERIFYING_KEY"])
+                )
                 qap = QAP(proof_system.order)
                 qap.from_r1cs(r1cs)
                 proof_system.qap = qap
-
-                print(f"[CIRCUIT] PK loaded, tau_1 length: {len(pk.tau_1)}")
-                print(f"[CIRCUIT] VK loaded, IC length: {len(vk.ic)}")
-                print(f"[CIRCUIT] QAP n_public: {qap.n_public}")
-
                 VotingCircuit._proof_system = proof_system
-                VotingCircuit._r1cs = r1cs 
+                VotingCircuit._r1cs = r1cs
                 print("[CIRCUIT] Keys loaded from Streamlit secrets")
                 return
-        except Exception as e:      
-                import traceback
-                print(f"[CIRCUIT] FAILED: {repr(e)}")
-                traceback.print_exc() 
+        except Exception as e:
+            import traceback
+            print(f"[CIRCUIT] FAILED: {repr(e)}")
+            traceback.print_exc()
 
         print("[CIRCUIT] Falling back to generating new keys...")
-
-        # Fall back to generating new keys
-        print("[CIRCUIT] Generating new keys...")
         r1cs = VotingCircuit._build_r1cs()
         proof_system = Groth16(r1cs)
         proof_system.setup()
-
         VotingCircuit._proof_system = proof_system
         VotingCircuit._r1cs = r1cs
         print("[CIRCUIT] New keys generated")
 
     @staticmethod
     def export_keys_as_secrets():
-        """Run locally once to generate secret values."""
         pk_b64 = base64.b64encode(
             VotingCircuit._proof_system.proving_key.to_bytes()
         ).decode()
         vk_b64 = base64.b64encode(
             VotingCircuit._proof_system.verifying_key.to_bytes()
         ).decode()
-        print("Add these to your Streamlit secrets:\n")
         print(f'ZKP_PROVING_KEY = "{pk_b64}"')
         print(f'ZKP_VERIFYING_KEY = "{vk_b64}"')
 
     @staticmethod
     def _serialize_point(point):
-        """Serialize points into a proper JSON format"""
         try:
             if hasattr(point, 'x') and hasattr(point, 'y'):
                 x, y = point.x, point.y
                 if isinstance(x, (tuple, list)):
-                    # G2 point: x and y are [x0, x1] and [y0, y1]
                     return [[int(p) for p in x], [int(p) for p in y]]
                 else:
-                    # G1 point: x and y are plain integers
                     return [int(x), int(y)]
             elif isinstance(point, (tuple, list)):
                 if len(point) == 2 and isinstance(point[0], (tuple, list)):
@@ -134,50 +121,41 @@ class VotingCircuit:
 
     @staticmethod
     def _deserialize_point(data, is_g2=False):
-        """Deserialize points into zksnake point objects"""
-        
         if isinstance(data, list):
             if len(data) == 2:
                 if isinstance(data[0], list) or is_g2:
-                    # G2 point (point B)
                     return PointG2(
-                            int(data[0][0]),  # x0
-                            int(data[0][1]),  # x1
-                            int(data[1][0]),  # y0
-                            int(data[1][1])   # y1
-                            )
+                        int(data[0][0]),
+                        int(data[0][1]),
+                        int(data[1][0]),
+                        int(data[1][1])
+                    )
                 else:
-                    # G1 point (points A and C): [x, y]
                     return PointG1(int(data[0]), int(data[1]))
             else:
                 return tuple(int(p) for p in data)
         else:
             return int(data)
 
-    
     @staticmethod
     @measure_runtime
     def generate_vote_proof(voter_token, candidate_id, voter_token_hash):
         """Generate zk-SNARK proof for vote"""
         print(f"[DEBUG] generate using proof_system id: {id(VotingCircuit._proof_system)}")
 
-        # Validate inputs
         computed_hash = hashlib.sha256(voter_token.encode()).hexdigest()
         if computed_hash != voter_token_hash:
             raise ValueError("Invalid voter token")
-        
+
         if candidate_id not in [1, 2, 3]:
             raise ValueError("Invalid candidate ID")
-        
+
         try:
-            # Generate proof
-            # Plug in voter choice
             solution = VotingCircuit._r1cs.solve({'candidate': candidate_id})
             public_part, private_part = VotingCircuit._r1cs.generate_witness(solution)
+            print(f"[DEBUG] public_part={public_part}, private_part={private_part}")
             proof = VotingCircuit._proof_system.prove(public_part, private_part)
-            
-            # Serialize proof
-            # Groth16 format, three elliptic curve points A, B, and C
+
             proof_data = {
                 'proof_type': 'zksnake_groth16',
                 'proof': {
@@ -187,19 +165,17 @@ class VotingCircuit:
                 },
                 'public_inputs': [str(p) for p in public_part],
             }
-            
+
             return json.dumps(proof_data)
-        
+
         except Exception as e:
             print(f"[DEBUG] Error during proof generation: {e}")
             raise
 
-
-
     @staticmethod
     @measure_runtime
     def verify_vote_proof(proof_data):
-        print(f"[DEBUG] generate using proof_system id: {id(VotingCircuit._proof_system)}")
+        print(f"[DEBUG] verify using proof_system id: {id(VotingCircuit._proof_system)}")
 
         try:
             proof_dict = json.loads(proof_data)
@@ -210,7 +186,6 @@ class VotingCircuit:
             if 'proof' not in proof_dict or 'public_inputs' not in proof_dict:
                 return False, "Invalid proof structure"
 
-            # Add this check
             if VotingCircuit._proof_system is None:
                 return False, "Proof system not initialized"
             if VotingCircuit._proof_system.verifying_key is None:
@@ -220,7 +195,10 @@ class VotingCircuit:
             B = VotingCircuit._deserialize_point(proof_dict['proof']['B'], is_g2=True)
             C = VotingCircuit._deserialize_point(proof_dict['proof']['C'])
             proof = Proof(A, B, C)
+
             public_inputs = [int(p) for p in proof_dict['public_inputs']]
+            if len(VotingCircuit._proof_system.verifying_key.ic) == 1:
+                public_inputs = []  # IC length 1 = 0 public inputs
 
             print(f"[DEBUG] public_inputs: {public_inputs}")
             print(f"[DEBUG] IC length: {len(VotingCircuit._proof_system.verifying_key.ic)}")
