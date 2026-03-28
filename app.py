@@ -20,6 +20,16 @@ def setup_server():
 
 server = setup_server()
 
+# TEMPORARY DEBUG 
+from zkp_circuit import VotingCircuit
+st.write({
+    "proof_system": str(type(VotingCircuit._proof_system)),
+    "proving_key": str(type(VotingCircuit._proof_system.proving_key)) if VotingCircuit._proof_system else "None",
+    "verifying_key": str(type(VotingCircuit._proof_system.verifying_key)) if VotingCircuit._proof_system else "None",
+})
+
+
+
 # ----------------------------
 # Helpers
 # ----------------------------
