@@ -269,7 +269,6 @@ def voter_ballot():
                 st.session_state.vote_submitted = True
                 try:
                     success, message = VotingClient.submit_vote(
-                        circuit=server.circuit,
                         server=server,
                         voter_token=st.session_state.voter_token,
                         candidate_id=st.session_state.last_candidate_id,

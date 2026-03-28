@@ -2,7 +2,6 @@ import hashlib
 import json
 import time
 import base64
-import streamlit as st
 
 try:
     from zksnake.groth16 import Groth16, Proof, ProvingKey, VerifyingKey
@@ -182,8 +181,9 @@ class VotingCircuit:
             raise
 
 
-    @measure_runtime
+
     @staticmethod
+    @measure_runtime
     def verify_vote_proof(proof_data):
         try:
             proof_dict = json.loads(proof_data)
