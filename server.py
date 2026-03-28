@@ -35,7 +35,7 @@ class VotingServer:
         
         if token:
             print(f"[ADMIN] Voter registered. Secure token: {token}")
-            print("[ADMIN] Give this token to the voter privately")
+            print("[ADMIN] Give this token to the voter privately\n")
             return token
         return None
     

@@ -1,12 +1,15 @@
 import hashlib
 import json
 import time
+import base64
+import streamlit as st
 
 try:
-    from zksnake.groth16 import Groth16, Proof
+    from zksnake.groth16 import Groth16, Proof, ProvingKey, VerifyingKey
     from zksnake.arithmetization import ConstraintSystem, R1CS, Var
     from zksnake.constant import BN254_SCALAR_FIELD
-    from zksnake.ecc import ec_bn254
+    from zksnake.ecc import ec_bn254, EllipticCurve
+    from zksnake.groth16.qap import QAP
     PointG1 = ec_bn254.PointG1
     PointG2 = ec_bn254.PointG2
 except ImportError as e:
@@ -22,43 +25,79 @@ def measure_runtime(func):
 
 class VotingCircuit:
     """zk-SNARK implementation using zksnake lib"""
-    
+
     _proof_system = None
     _r1cs = None
 
     def __init__(self):
         VotingCircuit._setup_circuit()
-    
+
     @staticmethod
-    def _setup_circuit():
-        """Setup a voting circuit"""
-        
-        if VotingCircuit._proof_system is not None:
-            return
-        
-        # Define circuit: candidate must be 1, 2, or 3, can be expended.
+    def _build_r1cs():
         candidate = Var('candidate')
         cs = ConstraintSystem(['candidate'], [], BN254_SCALAR_FIELD)
-        
-        # Constraint: Only one candidate
-        # This equation equals 0 only when candidate is 1, 2, or 3  
         temp1 = Var('temp1')
         temp2 = Var('temp2')
-        
         cs.add_constraint(temp1 == (candidate - 1) * (candidate - 2))
         cs.add_constraint(temp2 == temp1 * (candidate - 3))
         cs.add_constraint(temp2 == 0)
-        
-        # Generate
         r1cs = R1CS(cs)
         r1cs.compile()
-        
+        return r1cs
+
+    @staticmethod
+    def _setup_circuit():
+        if VotingCircuit._proof_system is not None:
+            return
+
+        # Try loading from Streamlit secrets first
+        try:
+            import streamlit as st
+            if "ZKP_PROVING_KEY" in st.secrets and "ZKP_VERIFYING_KEY" in st.secrets:
+                pk = ProvingKey.from_bytes(base64.b64decode(st.secrets["ZKP_PROVING_KEY"]))
+                vk = VerifyingKey.from_bytes(base64.b64decode(st.secrets["ZKP_VERIFYING_KEY"]))
+
+                proof_system = Groth16.__new__(Groth16)
+                proof_system.E = EllipticCurve("BN254")
+                proof_system.order = proof_system.E.order
+                proof_system.proving_key = pk
+                proof_system.verifying_key = vk
+
+                r1cs = VotingCircuit._build_r1cs()
+                qap = QAP(proof_system.order)
+                qap.from_r1cs(r1cs)
+                proof_system.qap = qap
+
+                VotingCircuit._proof_system = proof_system
+                VotingCircuit._r1cs = r1cs  # reuse the same r1cs instance
+                print("[CIRCUIT] Keys loaded from Streamlit secrets")
+                return
+        except Exception as e:
+            print(f"[CIRCUIT] Could not load keys from secrets: {e}")
+
+        # Fall back to generating new keys
+        print("[CIRCUIT] Generating new keys...")
+        r1cs = VotingCircuit._build_r1cs()
         proof_system = Groth16(r1cs)
         proof_system.setup()
-        
+
         VotingCircuit._proof_system = proof_system
         VotingCircuit._r1cs = r1cs
-    
+        print("[CIRCUIT] New keys generated")
+
+    @staticmethod
+    def export_keys_as_secrets():
+        """Run locally once to generate secret values."""
+        pk_b64 = base64.b64encode(
+            VotingCircuit._proof_system.proving_key.to_bytes()
+        ).decode()
+        vk_b64 = base64.b64encode(
+            VotingCircuit._proof_system.verifying_key.to_bytes()
+        ).decode()
+        print("Add these to your Streamlit secrets:\n")
+        print(f'ZKP_PROVING_KEY = "{pk_b64}"')
+        print(f'ZKP_VERIFYING_KEY = "{vk_b64}"')
+
     @staticmethod
     def _serialize_point(point):
         """Serialize points into a proper JSON format"""
