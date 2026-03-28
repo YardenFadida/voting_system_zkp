@@ -37,7 +37,9 @@ class VotingCircuit:
     @staticmethod
     def _build_r1cs():
         candidate = Var('candidate')
-        cs = ConstraintSystem([], ['candidate'], BN254_SCALAR_FIELD)
+        cs = ConstraintSystem(['candidate'], [], BN254_SCALAR_FIELD)
+        # Constraint: Only one candidate
+        # This equation equals 0 only when candidate is 1, 2, or 3 
         temp1 = Var('temp1')
         temp2 = Var('temp2')
         cs.add_constraint(temp1 == (candidate - 1) * (candidate - 2))
@@ -154,21 +156,22 @@ class VotingCircuit:
     @measure_runtime
     def generate_vote_proof(voter_token, candidate_id, voter_token_hash):
         """Generate zk-SNARK proof for vote"""
-        print(f"[DEBUG] generate using proof_system id: {id(VotingCircuit._proof_system)}")
-
+        # Validate inputs
         computed_hash = hashlib.sha256(voter_token.encode()).hexdigest()
         if computed_hash != voter_token_hash:
             raise ValueError("Invalid voter token")
-
+        
         if candidate_id not in [1, 2, 3]:
             raise ValueError("Invalid candidate ID")
-
+        
         try:
+            # Generate proof
             solution = VotingCircuit._r1cs.solve({'candidate': candidate_id})
             public_part, private_part = VotingCircuit._r1cs.generate_witness(solution)
-            print(f"[DEBUG] public_part={public_part}, private_part={private_part}")
             proof = VotingCircuit._proof_system.prove(public_part, private_part)
-
+            
+            # Serialize proof
+            # Groth16 format, three elliptic curve points A, B, and C
             proof_data = {
                 'proof_type': 'zksnake_groth16',
                 'proof': {
@@ -178,9 +181,9 @@ class VotingCircuit:
                 },
                 'public_inputs': [str(p) for p in public_part],
             }
-
+            
             return json.dumps(proof_data)
-
+        
         except Exception as e:
             print(f"[DEBUG] Error during proof generation: {e}")
             raise
@@ -188,31 +191,22 @@ class VotingCircuit:
     @staticmethod
     @measure_runtime
     def verify_vote_proof(proof_data):
-        print(f"[DEBUG] verify using proof_system id: {id(VotingCircuit._proof_system)}")
-
+        """Verify zk-SNARK proof"""
         try:
             proof_dict = json.loads(proof_data)
-
+            
             if proof_dict.get('proof_type') != 'zksnake_groth16':
                 return False, "Wrong proof format"
 
             if 'proof' not in proof_dict or 'public_inputs' not in proof_dict:
                 return False, "Invalid proof structure"
-
-            if VotingCircuit._proof_system is None:
-                return False, "Proof system not initialized"
-            if VotingCircuit._proof_system.verifying_key is None:
-                return False, "Verifying key is None"
-
+            
+            # Reconstruct proof object from A, B, C
             A = VotingCircuit._deserialize_point(proof_dict['proof']['A'])
             B = VotingCircuit._deserialize_point(proof_dict['proof']['B'], is_g2=True)
             C = VotingCircuit._deserialize_point(proof_dict['proof']['C'])
             proof = Proof(A, B, C)
-
             public_inputs = [int(p) for p in proof_dict['public_inputs']]
-
-            print(f"[DEBUG] public_inputs: {public_inputs}")
-            print(f"[DEBUG] IC length: {len(VotingCircuit._proof_system.verifying_key.ic)}")
 
             is_valid = VotingCircuit._proof_system.verify(proof, public_inputs)
 
