@@ -4,7 +4,7 @@ from zkp_circuit import VotingCircuit
 class VotingServer:
     def __init__(self):
         self.db = VotingDatabase()
-        VotingCircuit._setup_circuit()  # ← ensure circuit is initialized, no instance stored
+        VotingCircuit._setup_circuit()
 
     def setup_election(self):
         print("[SERVER] Setting up election with 3 candidates...")
@@ -31,9 +31,7 @@ class VotingServer:
             return False, result
 
         voter_id = result
-        print(f"[SERVER] Voter token validated (Voter ID: {voter_id})")
-
-        proof_valid, verification_msg = VotingCircuit.verify_vote_proof(proof_data)  # ← class call
+        proof_valid, verification_msg = VotingCircuit.verify_vote_proof(proof_data)
         if not proof_valid:
             print(f"[SERVER] Proof verification failed: {verification_msg}")
             return False, verification_msg

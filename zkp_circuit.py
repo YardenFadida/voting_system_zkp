@@ -52,12 +52,8 @@ class VotingCircuit:
 
     @staticmethod
     def _setup_circuit():
-        print("[CIRCUIT] Starting setup...1")
-
         if VotingCircuit._proof_system is not None:
             return
-
-        print("[CIRCUIT] Starting setup...2")
 
         try:
             if "ZKP_PROVING_KEY" in st.secrets and "ZKP_VERIFYING_KEY" in st.secrets:
@@ -76,7 +72,6 @@ class VotingCircuit:
                     proof_system.verifying_key.ic = [
                         VotingCircuit._deserialize_point(p) for p in ic_data
                     ]
-                    print(f"[CIRCUIT] IC patched: {len(proof_system.verifying_key.ic)} points")
                 qap = QAP(proof_system.order)
                 qap.from_r1cs(r1cs)
                 proof_system.qap = qap
@@ -85,9 +80,7 @@ class VotingCircuit:
                 print("[CIRCUIT] Keys loaded from Streamlit secrets")
                 return
         except Exception as e:
-            import traceback
             print(f"[CIRCUIT] FAILED: {repr(e)}")
-            traceback.print_exc()
 
         print("[CIRCUIT] Falling back to generating new keys...")
         r1cs = VotingCircuit._build_r1cs()
@@ -97,22 +90,6 @@ class VotingCircuit:
         VotingCircuit._r1cs = r1cs
         print("[CIRCUIT] New keys generated")
 
-    @staticmethod
-    def export_keys_as_secrets():
-        pk_b64 = base64.b64encode(
-            VotingCircuit._proof_system.proving_key.to_bytes()
-        ).decode()
-        vk = VotingCircuit._proof_system.verifying_key
-        print(f"[DEBUG] vk.ic length = {len(vk.ic)}")
-        print(f"[DEBUG] vk.ic = {vk.ic}")
-        vk_b64 = base64.b64encode(vk.to_bytes()).decode()
-
-        ic_data = [VotingCircuit._serialize_point(p) for p in vk.ic]
-        ic_b64 = base64.b64encode(json.dumps(ic_data).encode()).decode()
-
-        print(f'ZKP_PROVING_KEY = "{pk_b64}"')
-        print(f'ZKP_VERIFYING_KEY = "{vk_b64}"')
-        print(f'ZKP_VK_IC = "{ic_b64}"')
 
     @staticmethod
     def _serialize_point(point):
@@ -216,7 +193,4 @@ class VotingCircuit:
                 return False, "Proof verification failed"
 
         except Exception as e:
-            error_msg = str(e) or repr(e) or type(e).__name__
-            print(f"[DEBUG] verify exception type: {type(e).__name__}")
-            print(f"[DEBUG] verify exception repr: {repr(e)}")
-            return False, f"Verification error: {error_msg}"
+            return False, f"Verification error: {e}"

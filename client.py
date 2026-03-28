@@ -10,7 +10,7 @@ class VotingClient:
        token validation, ZKP verification, and vote recording
     """
     @staticmethod
-    def submit_vote(server, voter_token, candidate_id):  # ← removed circuit param
+    def submit_vote(server, voter_token, candidate_id):
         candidate_id = int(candidate_id)
         voter_token = (voter_token or "").strip()
 
@@ -22,7 +22,7 @@ class VotingClient:
 
         try:
             print("[CLIENT] Generating zero-knowledge proof...")
-            proof_data = VotingCircuit.generate_vote_proof(  # ← class call
+            proof_data = VotingCircuit.generate_vote_proof( 
                 voter_token,
                 candidate_id,
                 voter_token_hash
