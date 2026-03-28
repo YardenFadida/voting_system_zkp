@@ -37,12 +37,13 @@ class VotingCircuit:
     @staticmethod
     def _build_r1cs():
         candidate = Var('candidate')
-        cs = ConstraintSystem(['candidate'], [], BN254_SCALAR_FIELD)
+        cs = ConstraintSystem([], ['candidate'], BN254_SCALAR_FIELD)
         temp1 = Var('temp1')
         temp2 = Var('temp2')
         cs.add_constraint(temp1 == (candidate - 1) * (candidate - 2))
         cs.add_constraint(temp2 == temp1 * (candidate - 3))
         cs.add_constraint(temp2 == 0)
+        cs.set_public(candidate)
         r1cs = R1CS(cs)
         r1cs.compile()
         return r1cs
@@ -68,6 +69,12 @@ class VotingCircuit:
                 proof_system.verifying_key = VerifyingKey.from_bytes(
                     base64.b64decode(st.secrets["ZKP_VERIFYING_KEY"])
                 )
+                if "ZKP_VK_IC" in st.secrets:
+                    ic_data = json.loads(base64.b64decode(st.secrets["ZKP_VK_IC"]))
+                    proof_system.verifying_key.ic = [
+                        VotingCircuit._deserialize_point(p) for p in ic_data
+                    ]
+                    print(f"[CIRCUIT] IC patched: {len(proof_system.verifying_key.ic)} points")
                 qap = QAP(proof_system.order)
                 qap.from_r1cs(r1cs)
                 proof_system.qap = qap
@@ -93,11 +100,17 @@ class VotingCircuit:
         pk_b64 = base64.b64encode(
             VotingCircuit._proof_system.proving_key.to_bytes()
         ).decode()
-        vk_b64 = base64.b64encode(
-            VotingCircuit._proof_system.verifying_key.to_bytes()
-        ).decode()
+        vk = VotingCircuit._proof_system.verifying_key
+        print(f"[DEBUG] vk.ic length = {len(vk.ic)}")
+        print(f"[DEBUG] vk.ic = {vk.ic}")
+        vk_b64 = base64.b64encode(vk.to_bytes()).decode()
+
+        ic_data = [VotingCircuit._serialize_point(p) for p in vk.ic]
+        ic_b64 = base64.b64encode(json.dumps(ic_data).encode()).decode()
+
         print(f'ZKP_PROVING_KEY = "{pk_b64}"')
         print(f'ZKP_VERIFYING_KEY = "{vk_b64}"')
+        print(f'ZKP_VK_IC = "{ic_b64}"')
 
     @staticmethod
     def _serialize_point(point):
@@ -197,8 +210,6 @@ class VotingCircuit:
             proof = Proof(A, B, C)
 
             public_inputs = [int(p) for p in proof_dict['public_inputs']]
-            if len(VotingCircuit._proof_system.verifying_key.ic) == 1:
-                public_inputs = []  # IC length 1 = 0 public inputs
 
             print(f"[DEBUG] public_inputs: {public_inputs}")
             print(f"[DEBUG] IC length: {len(VotingCircuit._proof_system.verifying_key.ic)}")
