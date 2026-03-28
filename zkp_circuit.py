@@ -79,8 +79,12 @@ class VotingCircuit:
                 VotingCircuit._r1cs = r1cs 
                 print("[CIRCUIT] Keys loaded from Streamlit secrets")
                 return
-        except Exception as e:
-            print(f"[CIRCUIT] Could not load keys from secrets: {e}")
+        except Exception as e:      
+                import traceback
+                print(f"[CIRCUIT] FAILED: {repr(e)}")
+                traceback.print_exc() 
+                
+        print("[CIRCUIT] Falling back to generating new keys...")
 
         # Fall back to generating new keys
         print("[CIRCUIT] Generating new keys...")
