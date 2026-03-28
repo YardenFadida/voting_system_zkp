@@ -114,7 +114,7 @@ def admin_side():
     st.header("Admin Side")
     if st.button("Logout"):
         st.session_state.admin_authenticated = False
-        sys.stdout = sys.__stdout__           # restore stdout on logout
+        sys.stdout = sys.__stdout__
         st.rerun()
 
     # Debug output — only visible to authenticated admin
@@ -218,7 +218,7 @@ def voter_ballot():
     options = candidate_options()
 
     if not options:
-        st.warning("No candidates found. Go to the Admin Side and load the election first.")
+        st.warning("Vote is not active yet.")
         return
 
     label_map = {cid: name for cid, name in options}
@@ -269,7 +269,6 @@ def voter_ballot():
                 st.session_state.vote_submitted = True
                 try:
                     success, message = VotingClient.submit_vote(
-                        circuit=server.circuit,
                         server=server,
                         voter_token=st.session_state.voter_token,
                         candidate_id=st.session_state.last_candidate_id,
