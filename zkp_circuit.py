@@ -83,7 +83,7 @@ class VotingCircuit:
                 import traceback
                 print(f"[CIRCUIT] FAILED: {repr(e)}")
                 traceback.print_exc() 
-                
+
         print("[CIRCUIT] Falling back to generating new keys...")
 
         # Fall back to generating new keys
@@ -159,6 +159,8 @@ class VotingCircuit:
     @measure_runtime
     def generate_vote_proof(voter_token, candidate_id, voter_token_hash):
         """Generate zk-SNARK proof for vote"""
+        print(f"[DEBUG] generate using proof_system id: {id(VotingCircuit._proof_system)}")
+
         # Validate inputs
         computed_hash = hashlib.sha256(voter_token.encode()).hexdigest()
         if computed_hash != voter_token_hash:
@@ -197,6 +199,8 @@ class VotingCircuit:
     @staticmethod
     @measure_runtime
     def verify_vote_proof(proof_data):
+        print(f"[DEBUG] generate using proof_system id: {id(VotingCircuit._proof_system)}")
+
         try:
             proof_dict = json.loads(proof_data)
 
