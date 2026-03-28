@@ -69,7 +69,7 @@ class VotingCircuit:
                 proof_system.qap = qap
 
                 VotingCircuit._proof_system = proof_system
-                VotingCircuit._r1cs = r1cs  # reuse the same r1cs instance
+                VotingCircuit._r1cs = r1cs 
                 print("[CIRCUIT] Keys loaded from Streamlit secrets")
                 return
         except Exception as e:
@@ -181,25 +181,33 @@ class VotingCircuit:
             print(f"[DEBUG] Error during proof generation: {e}")
             raise
 
-    @staticmethod
+
     @measure_runtime
+    @staticmethod
     def verify_vote_proof(proof_data):
-        """Verify zk-SNARK proof"""
         try:
             proof_dict = json.loads(proof_data)
-            
+
             if proof_dict.get('proof_type') != 'zksnake_groth16':
                 return False, "Wrong proof format"
 
             if 'proof' not in proof_dict or 'public_inputs' not in proof_dict:
                 return False, "Invalid proof structure"
-            
-            # Reconstruct proof object from A, B, C
+
+            # Add this check
+            if VotingCircuit._proof_system is None:
+                return False, "Proof system not initialized"
+            if VotingCircuit._proof_system.verifying_key is None:
+                return False, "Verifying key is None"
+
             A = VotingCircuit._deserialize_point(proof_dict['proof']['A'])
             B = VotingCircuit._deserialize_point(proof_dict['proof']['B'], is_g2=True)
             C = VotingCircuit._deserialize_point(proof_dict['proof']['C'])
             proof = Proof(A, B, C)
             public_inputs = [int(p) for p in proof_dict['public_inputs']]
+
+            print(f"[DEBUG] public_inputs: {public_inputs}")
+            print(f"[DEBUG] IC length: {len(VotingCircuit._proof_system.verifying_key.ic)}")
 
             is_valid = VotingCircuit._proof_system.verify(proof, public_inputs)
 
@@ -207,6 +215,9 @@ class VotingCircuit:
                 return True, "Proof verified"
             else:
                 return False, "Proof verification failed"
-        
+
         except Exception as e:
-            return False, f"Verification error: {str(e)}"
+            error_msg = str(e) or repr(e) or type(e).__name__
+            print(f"[DEBUG] verify exception type: {type(e).__name__}")
+            print(f"[DEBUG] verify exception repr: {repr(e)}")
+            return False, f"Verification error: {error_msg}"
