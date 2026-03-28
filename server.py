@@ -22,7 +22,7 @@ class VotingServer:
             return token
         return None
 
-    def receive_vote(self, voter_token_hash, proof_data, public_candidate_input):
+    def receive_vote(self, voter_token_hash, proof_data):
         print("[SERVER] Receiving vote submission...")
 
         is_valid, result = self.db.verify_voter_token(voter_token_hash)
@@ -31,7 +31,7 @@ class VotingServer:
             return False, result
 
         voter_id = result
-        proof_valid, verification_msg = VotingCircuit.verify_vote_proof(proof_data)
+        proof_valid, public_candidate_input, verification_msg = VotingCircuit.verify_vote_proof(proof_data)
         if not proof_valid:
             print(f"[SERVER] Proof verification failed: {verification_msg}")
             return False, verification_msg

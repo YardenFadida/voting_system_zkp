@@ -13,7 +13,7 @@ try:
     PointG1 = ec_bn254.PointG1
     PointG2 = ec_bn254.PointG2
 except ImportError as e:
-    print(f"[DEBUG] Error during imports {e}")
+    raise ImportError("zksnake library is required") from e
 
 
 def measure_runtime(func):
@@ -186,11 +186,11 @@ class VotingCircuit:
             public_inputs = [int(p) for p in proof_dict['public_inputs']]
 
             is_valid = VotingCircuit._proof_system.verify(proof, public_inputs)
-
+            public_candidate_input = str(public_inputs[1])
             if is_valid:
-                return True, "Proof verified"
+                return True, public_candidate_input, "Proof verified"
             else:
-                return False, "Proof verification failed"
+                return False, 0, "Proof verification failed"
 
         except Exception as e:
             return False, f"Verification error: {e}"

@@ -34,7 +34,7 @@ class VotingClient:
 
         try:
             print("\n[CLIENT] Securely transmitting proof to server...")
-            success, message = server.receive_vote(voter_token_hash, proof_data, candidate_id)
+            success, message = server.receive_vote(voter_token_hash, proof_data)
 
             if success:
                 print(f"[CLIENT] ✓ Vote submitted successfully: {message}")
