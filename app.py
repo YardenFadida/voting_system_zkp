@@ -89,46 +89,12 @@ class _StreamlitStdout:
     def flush(self):
         self._orig.flush()
 
-def check_admin_password():
-    """Returns True if admin is authenticated."""
-    if st.session_state.get("admin_authenticated"):
-        return True
-    
-    st.subheader("Admin Access Required")
-    password = st.text_input("Enter admin password", type="password", key="admin_pw_input")
-    
-    if st.button("Login", width='stretch'):
-        if password == st.secrets["ADMIN_PASSWORD"]:
-            st.session_state.admin_authenticated = True
-            st.rerun()
-        else:
-            st.error("Incorrect password.")
-    
-    return False
-
 
 # ----------------------------
 # Admin side
 # ----------------------------
 def admin_side():
     st.header("Admin Side")
-    if st.button("Logout"):
-        st.session_state.admin_authenticated = False
-        sys.stdout = sys.__stdout__           # restore stdout on logout
-        st.rerun()
-
-    # Debug output — only visible to authenticated admin
-    st.caption("Debug Output")
-    _debug_placeholder = st.empty()
-    if not isinstance(sys.stdout, _StreamlitStdout):
-        sys.stdout = _StreamlitStdout(_debug_placeholder)
-    else:
-        sys.stdout._placeholder = _debug_placeholder
-    _debug_placeholder.markdown(
-        f"<div style='{_DIV_STYLE}'>{st.session_state.debug_buffer or '(no output yet)'}</div>",
-        unsafe_allow_html=True,
-    )
-    st.divider()
 
     col1, col2= st.columns(2)
 
@@ -218,7 +184,7 @@ def voter_ballot():
     options = candidate_options()
 
     if not options:
-        st.warning("No candidates found. Go to the Admin Side and load the election first.")
+        st.warning("Vote is not active yet.")
         return
 
     label_map = {cid: name for cid, name in options}
@@ -269,7 +235,6 @@ def voter_ballot():
                 st.session_state.vote_submitted = True
                 try:
                     success, message = VotingClient.submit_vote(
-                        circuit=server.circuit,
                         server=server,
                         voter_token=st.session_state.voter_token,
                         candidate_id=st.session_state.last_candidate_id,
@@ -297,10 +262,20 @@ def voter_ballot():
 st.set_page_config(page_title="ZK Voting Demo", layout="wide")
 init_session_state()
 
+st.caption("Debug Output")
+_debug_placeholder = st.empty()
+if not isinstance(sys.stdout, _StreamlitStdout):
+    sys.stdout = _StreamlitStdout(_debug_placeholder)
+else:
+    sys.stdout._placeholder = _debug_placeholder
+_debug_placeholder.markdown(
+    f"<div style='{_DIV_STYLE}'>{st.session_state.debug_buffer or '(no output yet)'}</div>",
+    unsafe_allow_html=True,
+)
+
 st.title("ZK Vote Demo")
 mode = st.sidebar.radio("View", ["Admin Side", "Voter Ballot"], index=1)
 if mode == "Admin Side":
-    if check_admin_password():
-        admin_side()
+    admin_side()
 else:
     voter_ballot()

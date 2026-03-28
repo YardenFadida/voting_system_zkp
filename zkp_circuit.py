@@ -1,16 +1,16 @@
 import hashlib
 import json
 import time
-
 try:
-    from zksnake.groth16 import Groth16, Proof
+    from zksnake.groth16 import Groth16, Proof, ProvingKey, VerifyingKey
     from zksnake.arithmetization import ConstraintSystem, R1CS, Var
     from zksnake.constant import BN254_SCALAR_FIELD
-    from zksnake.ecc import ec_bn254
+    from zksnake.ecc import ec_bn254, EllipticCurve
+    from zksnake.groth16.qap import QAP
     PointG1 = ec_bn254.PointG1
     PointG2 = ec_bn254.PointG2
 except ImportError as e:
-    print(f"[DEBUG] Error during imports {e}")
+    raise ImportError("zksnake library is required") from e
 
 def measure_runtime(func):
     def wrapper(*args, **kwargs):
@@ -58,18 +58,16 @@ class VotingCircuit:
         
         VotingCircuit._proof_system = proof_system
         VotingCircuit._r1cs = r1cs
-    
+
+
     @staticmethod
     def _serialize_point(point):
-        """Serialize points into a proper JSON format"""
         try:
             if hasattr(point, 'x') and hasattr(point, 'y'):
                 x, y = point.x, point.y
                 if isinstance(x, (tuple, list)):
-                    # G2 point: x and y are [x0, x1] and [y0, y1]
                     return [[int(p) for p in x], [int(p) for p in y]]
                 else:
-                    # G1 point: x and y are plain integers
                     return [int(x), int(y)]
             elif isinstance(point, (tuple, list)):
                 if len(point) == 2 and isinstance(point[0], (tuple, list)):
@@ -84,27 +82,22 @@ class VotingCircuit:
 
     @staticmethod
     def _deserialize_point(data, is_g2=False):
-        """Deserialize points into zksnake point objects"""
-        
         if isinstance(data, list):
             if len(data) == 2:
                 if isinstance(data[0], list) or is_g2:
-                    # G2 point (point B)
                     return PointG2(
-                            int(data[0][0]),  # x0
-                            int(data[0][1]),  # x1
-                            int(data[1][0]),  # y0
-                            int(data[1][1])   # y1
-                            )
+                        int(data[0][0]),
+                        int(data[0][1]),
+                        int(data[1][0]),
+                        int(data[1][1])
+                    )
                 else:
-                    # G1 point (points A and C): [x, y]
                     return PointG1(int(data[0]), int(data[1]))
             else:
                 return tuple(int(p) for p in data)
         else:
             return int(data)
 
-    
     @staticmethod
     @measure_runtime
     def generate_vote_proof(voter_token, candidate_id, voter_token_hash):
@@ -119,7 +112,6 @@ class VotingCircuit:
         
         try:
             # Generate proof
-            # Plug in voter choice
             solution = VotingCircuit._r1cs.solve({'candidate': candidate_id})
             public_part, private_part = VotingCircuit._r1cs.generate_witness(solution)
             proof = VotingCircuit._proof_system.prove(public_part, private_part)

@@ -38,14 +38,6 @@ The system is composed of five modules:
 
 ## 🚀 Getting Started
 
-
-
-### Run Tests
-
-```bash
-pytest tests/test_*.py
-```
-
 # How to Run Our Code
 
 ## 1. Create a virtual environment (recommended)
