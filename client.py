@@ -3,8 +3,7 @@ from zkp_circuit import VotingCircuit
 
 class VotingClient:
     """
-    Client-side helper.
-    Responsibilities:
+    Client-side Responsibilities:
     1. Generate the ZK proof for the voter's choice
     2. Hand the proof to server.receive_vote, which handles
        token validation, ZKP verification, and vote recording
@@ -37,9 +36,9 @@ class VotingClient:
             success, message = server.receive_vote(voter_token_hash, proof_data, candidate_id)
 
             if success:
-                print(f"[CLIENT] ✓ Vote submitted successfully: {message}")
+                print(f"[CLIENT] Vote submitted successfully: {message}")
             else:
-                print(f"[CLIENT] ✗ Vote submission failed: {message}")
+                print(f"[CLIENT] Vote submission failed: {message}")
 
             return success, message
 

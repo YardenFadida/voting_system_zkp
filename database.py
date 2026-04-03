@@ -52,10 +52,11 @@ class VotingDatabase:
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
         
-        # Create a unique hash and token for the voter that contain they personal information provided by the admin
-        # Hash value used to prevent double registration of the same voter with the same ID
+        # Create a unique hash and token for the voter that contain their personal information provided by the admin
+        # Hash value used to prevent privacy leak if the db is exposed.
         voter_hash = hashlib.sha256(voter_identifier.encode()).hexdigest()
         # This part is the secret token provided to the voter in order to cast their votes
+        # Extremely low chance to receive 2 identical tokens within the same election, since draw from 256 bits space. 
         voter_token = secrets.token_urlsafe(32)
         # This is the part we store in order to verify the validity of the token
         voter_token_hash = hashlib.sha256(voter_token.encode()).hexdigest()

@@ -14,13 +14,14 @@ class VotingServer:
         print("[SERVER] Election setup complete!\n")
 
     def admin_register_voter(self, voter_identifier):
-        print(f"\n[ADMIN] Registering voter: {voter_identifier}")
+        print(f"[ADMIN] Registering voter: {voter_identifier}")
         token = self.db.add_eligible_voter(voter_identifier)
         if token:
             print(f"[ADMIN] Voter registered. Secure token: {token}")
             print("[ADMIN] Give this token to the voter privately\n")
             return token
         return None
+
     def receive_vote(self, voter_token_hash, proof_data, public_candidate_input):
         """
         Receive vote from client with ZKP proof
@@ -32,7 +33,7 @@ class VotingServer:
         """
         print("[SERVER] Receiving vote submission...")
         
-        # Step 1: Verify voter token and check double voting
+        # Verify voter token and check double voting
         is_valid, result = self.db.verify_voter_token(voter_token_hash)
         
         if not is_valid:
@@ -42,7 +43,7 @@ class VotingServer:
         voter_id = result
         print(f"[SERVER] Voter token validated (Voter ID: {voter_id})")
         
-        # Step 2: Verify ZKP proof
+        # Verify ZKP proof
         proof_valid, verification_msg = VotingCircuit.verify_vote_proof(proof_data) 
         
         if not proof_valid:
@@ -51,7 +52,7 @@ class VotingServer:
         
         print("[SERVER] ZKP proof verified successfully")
         
-        # Step 3: Record vote
+        # Record vote
         success, message = self.db.record_vote(voter_token_hash, proof_data, public_candidate_input)
         
         if success:
